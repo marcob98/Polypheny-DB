@@ -22,6 +22,7 @@ import java.util.Map;
 import javax.annotation.Nullable;
 import lombok.Value;
 import lombok.experimental.SuperBuilder;
+import org.bson.BsonDocument;
 import org.polypheny.db.adapter.DataStore;
 import org.polypheny.db.adapter.DeployMode;
 import org.polypheny.db.algebra.AlgCollation;
@@ -578,6 +579,8 @@ public abstract class DdlManager {
     public abstract void dropCollection( LogicalCollection catalogCollection, Statement statement );
 
     public abstract void dropCollectionPlacement( long namespaceId, LogicalCollection collection, List<DataStore<?>> dataStores, Statement statement );
+
+    //public abstract String getCollectionSchemaAsJson(long namespaceId, String collectionName);
 
 
     /**

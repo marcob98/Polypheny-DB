@@ -101,7 +101,7 @@ public final class SchemaOptionsResolver {
         if (root.has("docSchema")) {
             JsonNode ds = root.get("docSchema");
             if (!ds.isObject()) throw new IllegalArgumentException("'docSchema' must be an object");
-            schema = new DocumentSchema(readObjectNode((ObjectNode) ds));
+            schema = new DocumentSchema(readObjectNode((ObjectNode) ds, true));
         } else if (!schemaOptional) {
             throw new IllegalArgumentException("Missing 'docSchema'.");
         }
@@ -109,9 +109,11 @@ public final class SchemaOptionsResolver {
         return new Resolved(schema, mode, alterMode, renames, defaults, coercions, pruneExtras, dryRun);
     }
 
-    // ---------- Recursive readers ----------
-
     private static DocumentSchema.ObjectNode readObjectNode(ObjectNode objSpec) {
+        return readObjectNode(objSpec, false);
+    }
+
+    private static DocumentSchema.ObjectNode readObjectNode(ObjectNode objSpec, boolean isRoot) {
         if (objSpec.has("type")) {
             String t = objSpec.get("type").asText("").trim().toLowerCase(Locale.ROOT);
             if (!t.isEmpty() && !t.equals("object"))
@@ -121,6 +123,9 @@ public final class SchemaOptionsResolver {
         if (objSpec.has("required"))
             throw new IllegalArgumentException("This dialect does not support 'required'. All declared properties are required.");
 
+        if (!isRoot && objSpec.has("additionalProperties"))
+            throw new IllegalArgumentException("'additionalProperties' is only allowed at the top level of 'docSchema'.");
+
         Map<String, DocumentSchema.Node> props = new LinkedHashMap<>();
         if (objSpec.has("properties")) {
             JsonNode propsNode = objSpec.get("properties");
@@ -128,7 +133,10 @@ public final class SchemaOptionsResolver {
             propsNode.fields().forEachRemaining(e -> props.put(e.getKey(), readNode(e.getValue())));
         }
 
-        DocumentSchema.AdditionalProperties ap = readAP(objSpec);
+        DocumentSchema.AdditionalProperties ap = isRoot
+                ? readAP(objSpec)
+                : DocumentSchema.AdditionalProperties.FORBID;
+
         return new DocumentSchema.ObjectNode(props, ap);
     }
 
@@ -142,13 +150,13 @@ public final class SchemaOptionsResolver {
         ObjectNode o = (ObjectNode) spec;
         if (o.has("type") && o.get("type").isTextual()) {
             String typeText = o.get("type").asText().trim().toLowerCase(Locale.ROOT);
-            if (typeText.equals("object")) return readObjectNode(o);
+            if (typeText.equals("object")) return readObjectNode(o, false);
             if (typeText.equals("array"))  return readArrayNode(o);
             PolyType pt = mapInputTypeToPoly(typeText);
             return new DocumentSchema.ScalarNode(pt);
         }
 
-        if (o.has("properties")) return readObjectNode(o);
+        if (o.has("properties")) return readObjectNode(o, false);
         throw new IllegalArgumentException("Missing or unsupported 'type' in property spec: " + o);
     }
 
@@ -168,78 +176,57 @@ public final class SchemaOptionsResolver {
         throw new IllegalArgumentException("'additionalProperties' must be boolean or 'FORBID'/'ALLOW'");
     }
 
-    // ---------- Mapping from friendly tokens (and legacy) to PolyType ----------
-
     private static PolyType mapInputTypeToPoly(String raw) {
         if (raw == null) return PolyType.ANY;
         String s = raw.trim();
-        // strip any legacy (p,s) suffix: VARCHAR(50), DECIMAL(10,2), etc.
         int paren = s.indexOf('(');
         if (paren >= 0) s = s.substring(0, paren);
         String t = s.toLowerCase(Locale.ROOT);
 
-        // Friendly dialect
         switch (t) {
             case "text":
             case "string":
                 return PolyType.TEXT;
-
             case "number":
             case "numeric":
-                // choose a wide numeric so validator accepts int/long/double
                 return PolyType.DOUBLE;
-
             case "boolean":
             case "bool":
                 return PolyType.BOOLEAN;
-
             case "date":
                 return PolyType.DATE;
-
             case "timestamp":
             case "datetime":
                 return PolyType.TIMESTAMP;
-
             case "binary":
             case "blob":
                 return PolyType.BINARY;
-
             case "any":
                 return PolyType.ANY;
         }
 
-        // Legacy SQL-ish tokens we still accept
         switch (t) {
-            // strings
             case "char":
             case "varchar":
             case "json":
                 return PolyType.TEXT;
-
-            // integers
             case "tinyint":
             case "smallint":
             case "int":
             case "integer":
             case "bigint":
                 return PolyType.INTEGER;
-
-            // floating / decimal -> keep wide to allow ints as well
             case "decimal":
             case "float":
             case "real":
             case "double":
                 return PolyType.DOUBLE;
-
-            // binary-ish
             case "varbinary":
             case "file":
             case "image":
             case "video":
             case "audio":
                 return PolyType.BINARY;
-
-            // temporal
             case "time":
                 return PolyType.TIMESTAMP;
         }

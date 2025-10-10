@@ -2588,6 +2588,10 @@ public class DdlManagerImpl extends DdlManager {
         }
     }
 
+//    public String getCollectionSchemaAsJson(long namespaceId, String collectionName) {
+//
+//    }
+
 
     @Override
     public void dropCollection( LogicalCollection collection, Statement statement ) {

@@ -20,33 +20,25 @@ import com.mongodb.lang.Nullable;
 import org.bson.BsonDocument;
 import org.polypheny.db.ddl.DdlManager;
 import org.polypheny.db.languages.ParserPos;
-import org.polypheny.db.languages.mql.MqlNode;
+import org.polypheny.db.languages.mql.Mql.Type;
 import org.polypheny.db.nodes.ExecutableStatement;
 import org.polypheny.db.prepare.Context;
 import org.polypheny.db.processing.QueryContext.ParsedQueryContext;
 import org.polypheny.db.transaction.Statement;
-import org.polypheny.db.languages.mql.Mql.Type;
-import org.polypheny.db.type.entity.PolyValue;
-import org.polypheny.db.util.BsonUtil;
 
-/**
- * MQL: db.alterCollection("<name>", { validator: { $jsonSchema: {...} }, validationAction: "warn|error|off" })
- * If 'validator' is omitted, the schema is dropped (collection becomes schemaless).
- */
-public class MqlAlterCollection extends MqlNode implements ExecutableStatement {
+public class MqlGetCollectionSchema extends MqlCollectionStatement implements ExecutableStatement {
 
     private final String name;
-    private final BsonDocument options;
 
-    public MqlAlterCollection(ParserPos pos, String name, String namespace, BsonDocument options) {
-        super(pos, namespace);
+    public MqlGetCollectionSchema(ParserPos pos, String name, String namespace) {
+        // follow the same order other classes use, e.g., MqlFind / MqlDrop:
+        super(name, namespace, pos);
         this.name = name;
-        this.options = options;
     }
 
     @Override
     public Type getMqlKind() {
-        return Type.ALTER_COLLECTION;
+        return Type.GET_COLLECTION_SCHEMA;
     }
 
     @Override
@@ -56,13 +48,20 @@ public class MqlAlterCollection extends MqlNode implements ExecutableStatement {
 
     @Override
     public void execute(Context context, Statement statement, ParsedQueryContext parsedQueryContext) {
-        long namespaceId = parsedQueryContext.getNamespaceId();
-        PolyValue polyValue = options != null ? BsonUtil.toPolyValue( options ) : null;
-        DdlManager.getInstance().alterCollection(namespaceId, name, statement, polyValue);
+        long nsId = parsedQueryContext.getNamespaceId();
+
+        String json = DdlManager.getInstance()
+                .getCollectionSchemaAsJson(nsId, name);
+
+        BsonDocument out = (json == null || json.isBlank())
+                ? new BsonDocument()
+                : BsonDocument.parse(json);
+
+        //TODO
     }
 
     @Override
     public String toString() {
-        return "MqlAlterCollection{name='" + name + "'}";
+        return "MqlGetCollectionSchema{name='" + name + "'}";
     }
 }
